@@ -1,6 +1,9 @@
 const version = 1 ;
+const current = new Date()
 
-const liCode = (id,data) => `<li class="list-group-item d-flex justify-content-between align-items-center">
+const options = { year: 'numeric', month: 'numeric', day: 'numeric' };
+const liCode = (id,data,displayDate=false) => `<li class="list-group-item d-flex justify-content-between align-items-center StackedListItem--isDraggable" tabindex="1">
+${ displayDate ? data.date.toLocaleString('fr-FR', options) : ''}
 ${ data.checked ? '<s>' : '' } ${categories[data.category]} | ${data.content} ${ data.checked ? '</s>' : '' }
 <div class="btn-toolbar d-none" role="toolbar" aria-label="Toolbar with button groups">
     <div class="btn-group" role="group" aria-label="First group">
@@ -95,7 +98,6 @@ async function getData(id) {
     let tx = db.transaction('elements', 'readonly')
     let store = tx.objectStore('elements')
 
-    // add, clear, count, delete, get, getAll, getAllKeys, getKey, put
     let SavedItems = await store.get(id)
     
     db.close()
@@ -105,12 +107,7 @@ async function getData(id) {
     }
 }
 
-async function getAllDataForDays(day){
-    let lower = new Date(day)
-    lower.setHours(0,0,0,0)
-    let upper = new Date(day)
-    upper.setHours(24,0,0,0)
-
+async function getAllDataFromTo(lower, upper) {
     let db = await idb.openDB('todo', 1)
 
     let cursor = await db.transaction("elements").store.index("date").openKeyCursor(IDBKeyRange.bound(lower,upper));
@@ -128,8 +125,34 @@ async function getAllDataForDays(day){
         allSavedItems.push(await getData(element))
     })
     return [allSavedItems,allSaveKeys]
+}
 
 
+async function getAllDataForToday(){
+    let lower = new Date()
+    lower.setHours(0,0,0,0)
+    let upper = new Date()
+    upper.setHours(24,0,0,0)
+
+    return getAllDataFromTo(lower,upper)
+}
+
+async function getAllDataLate(){
+    let lower = new Date()
+    lower.setFullYear(lower.getFullYear()-1)
+    let upper = new Date()
+    upper.setHours(0,0,0,0)
+
+    return getAllDataFromTo(lower,upper)
+}
+
+async function getAllDataForNotToday(){
+    let lower = new Date()
+    lower.setHours(24,0,0,0)
+    let upper = new Date()
+    upper.setFullYear(upper.getFullYear()+1)
+
+    return getAllDataFromTo(lower,upper)
 }
 
 async function getCountForDays(day){
@@ -184,19 +207,39 @@ async function deleteFromId(id){
     }
 }
 
-const itemStyle = "list-group-item d-flex justify-content-between align-items-center"
-
 async function display() {
-    ulList.innerHTML= ''
-    const list = await getAllDataForDays(current);
+    ulList.innerHTML = ''
+    othersList.innerHTML = ''
+    ulLate.innerHTML = ''
+
+    const late = await getAllDataLate();
+    const list = await getAllDataForToday();
+    const nottoday = await getAllDataForNotToday()
     const count = await getCountForDays(current);
+
+
 
     info.innerText = count
     document.title = `To do (${count})`
 
+
+    late[0].forEach( (element,i) => {
+        ulLate.innerHTML += liCode(late[1][i], element, true)
+    });
+    if(late[0].length===0){
+        delayDiv.classList.add('d-none')
+    }else{
+        delayDiv.classList.remove('d-none')
+    }
+
     list[0].forEach( (element,i) => {
         ulList.innerHTML += liCode(list[1][i], element)
     });
+
+    nottoday[0].forEach( (element,i) => {
+        othersList.innerHTML += liCode(nottoday[1][i], element, true)
+    });
+
 
     items = document.querySelectorAll('li.list-group-item')
     items.forEach( item => {
@@ -234,59 +277,14 @@ async function display() {
 
 }
 
-let current = new Date()
-
-function displayDate(d = new Date() ){
+function displayDate(){
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    date.innerText = d.toLocaleString('fr-FR', options);
+    date.innerText = new Date().toLocaleString('en-UK', options);
 }
-
-async function displayNextDays(from = current){
-    
-    nextDays.innerHTML = ""
-    nextDaysCount.innerHTML = ""
-
-    let today = current;
-    for (let index = 0; index < 7; index++) {
-        let d = document.createElement('d')
-        const options = { weekday: 'short', day: 'numeric' };
-        d.innerText = new Date(new Date().setDate(new Date().getDate() + index)).toLocaleString('fr-FR', options);
-        d.classList = 'col cursor-pointer'
-        d.setAttribute('data-date',new Date(new Date().setDate(new Date().getDate() + index)))
-        nextDays.append(d)
-        
-        d = document.createElement('d')
-        d.classList = 'col'
-        d.innerText = await getCountForDays(new Date(new Date().setDate(new Date().getDate() + index)))
-        nextDaysCount.append(d)
-    }
-
-    document.querySelectorAll('[data-date]').forEach( element => {
-        element.addEventListener('click' , event =>{
-            current = new Date(element.getAttribute('data-date'))
-            updatePage()
-        })
-    })
-
-}
-
-nextDayBtn.addEventListener("click", event => {
-    current = new Date(current.setDate(current.getDate()+1))
-    updatePage()
-})
-
-previousDayBtn.addEventListener("click", event => {
-    current = new Date(current.setDate(current.getDate()-1))
-    updatePage()
-})
-
-
-
 
 function updatePage(){
-    displayDate(current)
+    displayDate()
     display()
-    displayNextDays()
 }
 
 function renderCategories(){
