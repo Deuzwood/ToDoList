@@ -1,3 +1,11 @@
 .cursor-pointer {
     cursor: pointer;
 }
+
+.mh-2 {
+    min-height: 200px;
+}
+
+li.draggable--original {
+    display: none !important;
+}

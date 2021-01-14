@@ -1,311 +1,252 @@
-const version = 1 ;
-const current = new Date()
-
+const version = 1;
+const db = new Dexie('todo');
 const options = { year: 'numeric', month: 'numeric', day: 'numeric' };
-const liCode = (id,data,displayDate=false) =>
-`<li class="list-group-item d-flex justify-content-between align-items-center">
+
+const liCode = (data) =>
+    `<li class="list-group-item d-flex justify-content-between align-items-center bg-dark" data-id=${
+        data.id
+    }>
     <div>
-    ${ displayDate ? data.date.toLocaleString('fr-FR', options) : ''}
-    ${ data.checked ? '<s>' : '' } ${categories[data.category]} | ${data.content} ${ data.checked ? '</s>' : '' }
+    ${categories[data.category]} | ${data.content}
     </div>
     <div class="btn-toolbar d-none" role="toolbar" aria-label="Toolbar with button groups">
         <div class="btn-group" role="group" aria-label="First group">
-            <button type="button" class="btn btn-success btn-sm" data-action="btnAction" data-id="${id}" data-role="check">🗸</button>
-            <input type="date" class="form-control d-none" id="datePicker-${id}">
-            <button type="button" class="btn btn-warning btn-sm" data-action="btnAction" data-id="${id}" data-role="prog">📅</button>
-            <button type="button" class="btn btn-danger btn-sm" data-action="btnAction" data-id="${id}" data-role="delete">🗑️</button>
         </div>
     </div>
-</li>` ;
+</li>`;
 
-const categories = []
-categories["default"] = "❔"
-categories["mail"] = "📧"
-categories["shop"] = "🛍️"
-categories["work"] = "💻"
-categories["rdv"] = "📅"
-categories["call"] = "📞"
+const boardCode = (data) => `
+<div class="col">
+    <div class="d-flex justify-content-between" data-role="boardHeader">
+        <h3>${data.name}</h3>
+        <button type="button" class="btn btn-outline-secondary d-none" data-bs-toggle="modal" data-bs-target="#configurationModal" data-id=${data.id}>⚙️</button>
+    </div>
+    <div class="border rounded mh-2" style="border-color: ${data.color}!important" data-id="${data.id}">
+        <ul class="list-group" id="_${data.id}List" data-role="boardList">
+        </ul>
+    </div>
+</div>
+`;
 
-addInput.addEventListener("keydown", event => {
-    if(event.key == "Enter"){
-        add(addInput.value)
-        addInput.value = ""
-        updatePage()
+const categories = [];
+categories['default'] = '❔';
+categories['mail'] = '📧';
+categories['shop'] = '🛍️';
+categories['work'] = '💻';
+categories['rdv'] = '📅';
+categories['call'] = '📞';
+
+addInput.addEventListener('keydown', async (event) => {
+    if (event.key == 'Enter') {
+        add(addInput.value);
+        addInput.value = '';
+        await renderBoards();
     }
-})
+});
 
 async function init() {
-    let db = await idb.openDB('todo', version , { upgrade(db) {
-        let obj = db.createObjectStore('elements', { autoIncrement: true })
-        obj.createIndex("date","date", { unique: false })
-    }})
-    db.close()
+    db.version(version).stores({
+        elements: '++id, board, date',
+        boards: '++id, name, order',
+    });
 
-    updatePage()
+    const res = await db.boards.toArray();
+
+    if (res.length == 0) {
+        await db.boards.add({
+            name: 'Open',
+            color: '#ffffff',
+            order: 1,
+        });
+
+        await db.boards.add({
+            name: 'WIP',
+            color: '#ffa500',
+            order: 2,
+        });
+
+        await db.boards.add({
+            name: 'Close',
+            color: '#ffffff',
+            order: 3,
+        });
+
+        await db.elements.add({
+            content: 'Website',
+            date: new Date(),
+            category: 'work',
+            board: 1,
+        });
+
+        await db.elements.add({
+            content: 'Sample',
+            date: new Date(),
+            category: 'work',
+            board: 2,
+        });
+    }
 }
-
-
-
 
 async function add(data) {
-    let db = await idb.openDB('todo', version , { upgrade(db) {
-        db.createObjectStore('elements', { autoIncrement: true })
-    }})
-    data = data.includes(':') && data.split(':')[0] in categories ? data.split(':',2) : ["default",data]
-    await db.add('elements', { content: data[1] , date: current , category : data[0] , checked : false })
-
-    db.close()
+    data =
+        data.includes(':') && data.split(':')[0] in categories
+            ? data.split(':', 2)
+            : ['default', data];
+    const current = new Date();
+    await db.elements.add({
+        content: data[1],
+        date: current,
+        category: data[0],
+        board: 1,
+    });
 }
 
-async function checkItemFromId(id) {
-    let db = await idb.openDB('todo', version )
-
-    let res = await db.get('elements', id)
-    await db.put('elements', { content: res.content , date: res.date , category : res.category , checked : !res.checked }, id)
-
-    db.close()
+async function addBoard(data) {
+    let res = await db.boards.count();
+    await db.boards.add({
+        name: data,
+        color: '#' + ((Math.random() * 0xffffff) << 0).toString(16),
+        order: res + 1,
+    });
 }
 
-async function changeDate(id,value) {
-    let db = await idb.openDB('todo', version )
-
-    let res = await db.get('elements', id)
-    await db.put('elements', { content: res.content , date: new Date(value) , category : res.category , checked : res.checked }, id)
-
-    db.close()
+async function getBoardNameFromId(id) {
+    const res = await db.boards.get(id);
+    return res.name;
 }
 
-
-async function getAllData() {
-    try {
-        let db = await idb.openDB('todo', 1)
-
-        let tx = db.transaction('elements', 'readonly')
-        let store = tx.objectStore('elements')
-
-        // add, clear, count, delete, get, getAll, getAllKeys, getKey, put
-        let allSavedItems = await store.getAll()
-        let allSaveKeys = await store.getAllKeys()
-        
-        db.close()
-        return [allSavedItems,allSaveKeys]
-    } catch (error) {
-        return []
-    }
-}
-
-async function getData(id) {
-    try {
-        let db = await idb.openDB('todo', 1)
-
-        let tx = db.transaction('elements', 'readonly')
-        let store = tx.objectStore('elements')
-
-        let SavedItems = await store.get(id)
-        
-        db.close()
-        return SavedItems
-    } catch (error) {
-        return null
-    }
-}
-
-async function getAllDataFromTo(lower, upper) {
-    let db = await idb.openDB('todo', 1)
-
-    let cursor = await db.transaction("elements").store.index("date").openKeyCursor(IDBKeyRange.bound(lower,upper));
-
-    let allSavedItems = []
-    let allSaveKeys = []
-
-    while (cursor) {
-        allSaveKeys.push(cursor.primaryKey)
-        cursor = await cursor.continue();
-    }
-
-    for(let i = 0 ; i < allSaveKeys.length ; i++){
-        allSavedItems.push(await getData(allSaveKeys[i]))
-    }
-    return [allSavedItems,allSaveKeys]
-}
-
-
-async function getAllDataForToday(){
-    let lower = new Date()
-    lower.setHours(0,0,0,0)
-    let upper = new Date()
-    upper.setHours(24,0,0,0)
-
-    return await getAllDataFromTo(lower,upper)
-}
-
-async function getAllDataLate(){
-    let lower = new Date()
-    lower.setFullYear(lower.getFullYear()-1)
-    let upper = new Date()
-    upper.setHours(0,0,0,0)
-
-    return await getAllDataFromTo(lower,upper)
-}
-
-async function getAllDataForNextDays(){
-    let lower = new Date()
-    lower.setHours(24,0,0,0)
-    let upper = new Date()
-    upper.setFullYear(upper.getFullYear()+1)
-
-    return await getAllDataFromTo(lower,upper)
-}
-
-async function getCountForDays(day){
-    let lower = new Date(day)
-    lower.setHours(0,0,0,0)
-    let upper = new Date(day)
-    upper.setHours(24,0,0,0)
-
-    let db = await idb.openDB('todo', 1)
-
-    let cursor = await db.transaction("elements").store.index("date").openKeyCursor(IDBKeyRange.bound(lower,upper));
-
-    let count=0
-
-    while (cursor) {
-        count++
-        cursor = await cursor.continue();
-    }
-    return count
-}
-
-async function getCount() {
-    try {
-        let db = await idb.openDB('todo', 1)
-
-    let tx = db.transaction('elements', 'readonly')
-    let store = tx.objectStore('elements')
-
-    // add, clear, count, delete, get, getAll, getAllKeys, getKey, put
-    let count = await store.count()
-    
-    db.close()
-    return count
-    } catch (error) {
-        return -1
-    }
-}
-
-async function deleteFromId(id){
-    try {
-        let db = await idb.openDB('todo', 1)
-
-    let tx = db.transaction('elements', 'readwrite')
-    let store = tx.objectStore('elements')
-
-    let count = await store.delete(id)
-    
-    db.close()
-    return count
-    } catch (error) {
-        return -1
-    }
+async function deleteFromId(id) {
+    await db.elements.delete(id);
 }
 
 async function display() {
-    const late = await getAllDataLate()
-    const list = await getAllDataForToday()
-    const nextDays = await getAllDataForNextDays()
-
-    ulList.innerHTML = ''
-    othersList.innerHTML = ''
-    ulLate.innerHTML = ''
-
-    updateAlert();
-    updateTitle();
-
-    late[0].forEach( (element,i) => {
-        ulLate.innerHTML += liCode(late[1][i], element, true)
+    document.querySelectorAll('[data-role="boardList"]').forEach((el) => {
+        el.innerHTML = '';
     });
-    if(late[0].length===0){
-        delayDiv.classList.add('d-none')
-    }else{
-        delayDiv.classList.remove('d-none')
+
+    const data = await db.elements.toArray();
+    for (let i = 0; i < data.length; i++) {
+        document.querySelector(
+            `#_${data[i].board.toString()}List`
+        ).innerHTML += liCode(data[i]);
     }
 
-    list[0].forEach( (element,i) => {
-        ulList.innerHTML += liCode(list[1][i], element)
+    const droppable = new Draggable.Droppable(
+        document.querySelectorAll('#boardsRow'),
+        {
+            draggable: '.list-group-item',
+            dropzone: '.border',
+        }
+    );
+
+    droppable.on('droppable:stop', async (data) => {
+        await updateId(
+            data.data.dragEvent.originalSource.getAttribute('data-id'),
+            data.data.dropzone.getAttribute('data-id')
+        );
+        data.data.dropzone.classList.remove('draggable-dropzone--occupied');
     });
-
-    nextDays[0].forEach( (element,i) => {
-        othersList.innerHTML += liCode(nextDays[1][i], element, true)
-    });
-
-
-    items = document.querySelectorAll('li.list-group-item')
-    items.forEach( item => {
-        item.addEventListener( 'mouseover', event => {
-            item.lastElementChild.classList.remove("d-none")
-        })
-        item.addEventListener( 'mouseleave', event => {
-            item.lastElementChild.classList.add("d-none")
-            item.children[1].children[0].children[1].classList.add("d-none")
-        })
-    })
-
-    document.querySelectorAll("button[data-action=btnAction]").forEach( element => {
-        element.addEventListener('click' ,async function (event) {
-            const id = element.getAttribute('data-id')
-            const role = element.getAttribute('data-role')
-            if( role == "delete"){
-                await deleteFromId(parseInt(id))
-                updatePage()
-            }
-            else if( role == "check"){
-                await checkItemFromId(parseInt(id))
-                updatePage()
-            }
-            else if( role == "prog"){
-                document.querySelector('#datePicker-'+parseInt(id)).classList.remove('d-none')
-                document.querySelector('#datePicker-'+parseInt(id)).addEventListener('change', async event => {
-                    await changeDate(parseInt(id),document.querySelector('#datePicker-'+parseInt(id)).value);
-                    updatePage()
-                
-                })
-            }
-        
-        })
-    });
-
-}
-
-async function updateAlert() {
-    const count = await getCountForDays(new Date());
-    alertCount.innerText = count
-    alertDiv.classList.remove('alert-primary','alert-success','alert-danger')
-    alertDiv.classList.add(`alert-${count === 0 ? 'success' : 'danger'}`)
-
-}
-
-async function updateTitle() {
-    const count = await getCountForDays(new Date());
-    document.title = `To do (${count})`
 }
 
 function displayDate() {
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    date.innerText = new Date().toLocaleString('en-UK', options);
+    const options = {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    };
+    date.innerText = ' - ' + new Date().toLocaleString(undefined, options);
 }
 
-function updatePage() {
-    displayDate()
-    display()
-}
-
-function renderCategories(){
-    for( c in categories){
-        let li = document.createElement('li')
-        li.innerText=categories[c]+" "+c
-        catUl.append(li)
+function renderCategories() {
+    for (c in categories) {
+        catIcons.innerHTML += categories[c] + '<br>';
+        catNames.innerHTML += c + '<br>';
     }
 }
 
-init()
-renderCategories()
+async function renderBoards() {
+    let res = await db.boards.orderBy('order').toArray();
+    boardsRow.innerHTML = '';
+    res.forEach((board) => {
+        boardsRow.innerHTML += boardCode(board);
+    });
+    document
+        .querySelectorAll('button[data-role="removeBoard"]')
+        .forEach(async (el) => {
+            el.addEventListener('click', async () => {
+                await delBoard(parseInt(el.getAttribute('data-id')));
+                renderBoards();
+            });
+        });
+    addListenerBoards();
+    display();
+}
+
+async function delBoard(id) {
+    await db.boards.delete(id);
+}
+
+/* Add a Board */
+addBoardForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    let value = addBoardValue.value;
+    addBoardValue.value = '';
+    await addBoard(value);
+    await renderBoards();
+});
+
+async function updateId(id, board) {
+    console.log(board);
+    if (board == 'trash') {
+        await deleteFromId(parseInt(id));
+        await renderBoards();
+        document.querySelector('[data-id="trash"]').innerHTML = '';
+        console.log('delete');
+    } else {
+        id = parseInt(id);
+        board = parseInt(board);
+        let res = await db.elements.update(id, { board: board });
+    }
+}
+
+async function i() {
+    await init();
+    await renderBoards();
+    displayDate();
+    renderCategories();
+}
+
+async function addListenerBoards() {
+    items = document.querySelectorAll('[data-role="boardHeader"]');
+    items.forEach((item) => {
+        item.addEventListener('mouseover', () => {
+            item.lastElementChild.classList.remove('d-none');
+        });
+        item.addEventListener('mouseleave', () => {
+            item.lastElementChild.classList.add('d-none');
+        });
+    });
+
+    document.querySelectorAll('[data-bs-toggle="modal"]').forEach((element) => {
+        element.addEventListener('click', async function (event) {
+            const id = parseInt(element.getAttribute('data-id'));
+            document.querySelector(
+                '#configurationModal h5'
+            ).innerHTML = await getBoardNameFromId(id);
+
+            const info = await db.boards.get(id);
+            colorInput.value = info.color;
+            colorInput.addEventListener('change', async () => {
+                await db.boards.update(id, { color: colorInput.value });
+                await renderBoards();
+            });
+            removeBoard.addEventListener('click', async () => {
+                await delBoard(id);
+                await renderBoards();
+            });
+        });
+    });
+}
+
+i();
