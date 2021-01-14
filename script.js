@@ -1,6 +1,6 @@
 const version = 1;
 const db = new Dexie('todo');
-const options = { year: 'numeric', month: 'numeric', day: 'numeric' };
+let droppable;
 
 const liCode = (data) =>
     `<li class="list-group-item d-flex justify-content-between align-items-center bg-dark" data-id=${
@@ -131,7 +131,11 @@ async function display() {
         ).innerHTML += liCode(data[i]);
     }
 
-    const droppable = new Draggable.Droppable(
+    if (typeof droppable != 'undefined') {
+        droppable.destroy();
+    }
+
+    droppable = new Draggable.Droppable(
         document.querySelectorAll('#boardsRow'),
         {
             draggable: '.list-group-item',
